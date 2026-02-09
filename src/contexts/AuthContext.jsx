@@ -46,7 +46,11 @@ export function AuthProvider({ children }) {
     if (initDone.current) return;
     initDone.current = true;
 
+    // Safety timeout — never stay on loading screen longer than 5s
+    const timeout = setTimeout(() => setLoading(false), 5000);
+
     supabase.auth.getSession().then(async ({ data: { session } }) => {
+      clearTimeout(timeout);
       if (session?.user) {
         setUser(session.user);
         userRef.current = session.user;
@@ -55,6 +59,7 @@ export function AuthProvider({ children }) {
       }
       setLoading(false);
     }).catch(() => {
+      clearTimeout(timeout);
       setLoading(false);
     });
 

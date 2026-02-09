@@ -102,13 +102,16 @@ export function AuthProvider({ children }) {
     return data;
   }
 
-  // Sign out
+  // Sign out — always clear local state even if Supabase call fails
   async function signOut() {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
     setUser(null);
     userRef.current = null;
     setProfile(null);
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error("Supabase signOut error:", err);
+    }
   }
 
   // Save / update profile (called during onboarding personalize step)

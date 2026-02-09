@@ -258,8 +258,14 @@ export default function Rewards({ slots, stats, onClose }) {
         {/* Sign Out */}
         <button
           onClick={async () => {
-            await signOut();
-            onClose();
+            try {
+              onClose();
+              await signOut();
+            } catch (err) {
+              console.error("Sign out error:", err);
+              // Force clear state even if Supabase call fails
+              window.location.reload();
+            }
           }}
           className="w-full mt-8 py-3 rounded-full border border-gray-200 text-gray-400 text-[13px] font-[500] flex items-center justify-center gap-2 active:scale-[0.98] transition-transform hover:border-gray-300 hover:text-gray-500"
         >

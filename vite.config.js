@@ -23,6 +23,11 @@ export default defineConfig({
           });
         },
       },
+      "/plantid-api": {
+        target: "https://plant.id",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/plantid-api/, "/api"),
+      },
     },
   },
 });

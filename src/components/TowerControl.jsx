@@ -33,15 +33,25 @@ import {
   DrawerTitle,
 } from "./ui/drawer";
 import Tower3DScene from "./Tower3DScene";
-import { identifyPlant, isPlantNetConfigured } from "../lib/plantnet";
+import { identifyPlant, isPlantIdConfigured } from "../lib/plantid";
 
 // ── helpers ──────────────────────────────────────────────────────
-function mapPlantNetResult(result, slotCrop) {
-  const { commonName, confidence, species, family } = result;
-  const healthScore = Math.round(60 + confidence * 40);
+function mapPlantIdResult(result, slotCrop) {
+  const { commonName, confidence, species, family, isHealthy, diseases } =
+    result;
+
+  let healthScore;
+  if (isHealthy === true) {
+    healthScore = Math.round(85 + confidence * 15);
+  } else if (isHealthy === false && diseases.length > 0) {
+    const worstProb = Math.max(...diseases.map((d) => d.probability));
+    healthScore = Math.max(20, Math.round(80 - worstProb * 60));
+  } else {
+    healthScore = Math.round(60 + confidence * 40);
+  }
 
   let diagnosis;
-  if (confidence >= 0.7) {
+  if (confidence >= 0.5) {
     const cropName = slotCrop?.name?.toLowerCase() || "";
     const identifiedName = commonName.toLowerCase();
     const speciesLower = species.toLowerCase();
@@ -50,12 +60,19 @@ function mapPlantNetResult(result, slotCrop) {
       speciesLower.includes(cropName) ||
       cropName.includes(identifiedName);
 
-    if (isMatch) {
-      diagnosis = `Identified as ${commonName} (${Math.round(confidence * 100)}% match). Healthy growth confirmed.`;
+    if (isHealthy === true) {
+      diagnosis = isMatch
+        ? `✅ Identified as ${commonName} (${Math.round(confidence * 100)}% match). Plant is healthy!`
+        : `Identified as ${commonName} (${family}). Expected ${slotCrop?.name || "unknown"}. Plant looks healthy.`;
+    } else if (diseases.length > 0) {
+      const topDisease = diseases[0];
+      diagnosis = `⚠️ ${commonName} — ${topDisease.name} detected (${Math.round(topDisease.probability * 100)}% probability).`;
     } else {
-      diagnosis = `Identified as ${commonName} (${family}). Expected ${slotCrop?.name || "unknown"}.`;
+      diagnosis = isMatch
+        ? `Identified as ${commonName} (${Math.round(confidence * 100)}% match).`
+        : `Identified as ${commonName} (${family}). Expected ${slotCrop?.name || "unknown"}.`;
     }
-  } else if (confidence >= 0.3) {
+  } else if (confidence >= 0.2) {
     diagnosis = `Possible ${commonName} (${Math.round(confidence * 100)}% confidence). Review recommended.`;
   } else {
     diagnosis = `Low confidence identification (${Math.round(confidence * 100)}%). Clearer photo recommended.`;
@@ -102,7 +119,7 @@ function SlotDetail({ slot, onAssignCrop, onUpdateSlot, onBack }) {
   };
 
   const handleScanClick = () => {
-    if (isPlantNetConfigured()) {
+    if (isPlantIdConfigured()) {
       fileInputRef.current?.click();
     } else {
       setScanning(true);
@@ -121,7 +138,7 @@ function SlotDetail({ slot, onAssignCrop, onUpdateSlot, onBack }) {
 
     try {
       const result = await identifyPlant(file);
-      const { diagnosis, healthScore } = mapPlantNetResult(result, slot.crop);
+      const { diagnosis, healthScore } = mapPlantIdResult(result, slot.crop);
       const date = new Date().toISOString().split("T")[0];
 
       onUpdateSlot(slot.id, {
@@ -133,9 +150,9 @@ function SlotDetail({ slot, onAssignCrop, onUpdateSlot, onBack }) {
       setScanning(false);
       toast.success(`Scan complete: ${healthScore}% health`);
     } catch (err) {
-      console.error("Pl@ntNet scan failed:", err);
+      console.error("Plant.id scan failed:", err);
       const msg = err.message || "";
-      if (msg.includes("404") || msg.includes("Species not found")) {
+      if (msg.includes("404") || msg.includes("No plant")) {
         toast.error("Could not identify species. Try a clearer plant photo.");
       } else {
         toast.error("API scan failed. Using local diagnosis.");
@@ -333,6 +350,9 @@ function SlotDetail({ slot, onAssignCrop, onUpdateSlot, onBack }) {
               <p className="text-[11px] text-gray-500 italic">
                 {identificationResult.scientificName}
               </p>
+              <p className="text-[11px] text-gray-400">
+                Family: {identificationResult.family}
+              </p>
               {/* Confidence bar */}
               <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
                 <div
@@ -340,6 +360,68 @@ function SlotDetail({ slot, onAssignCrop, onUpdateSlot, onBack }) {
                   style={{ width: `${Math.round(identificationResult.confidence * 100)}%` }}
                 />
               </div>
+
+              {/* Health Status */}
+              {identificationResult.isHealthy !== null && (
+                <div
+                  className={`flex items-center gap-2 p-2 rounded-[8px] ${
+                    identificationResult.isHealthy
+                      ? "bg-green-50"
+                      : "bg-amber-50"
+                  }`}
+                >
+                  {identificationResult.isHealthy ? (
+                    <Check size={14} className="text-green-600" />
+                  ) : (
+                    <AlertTriangle size={14} className="text-amber-600" />
+                  )}
+                  <span
+                    className={`text-[11px] font-[600] ${
+                      identificationResult.isHealthy
+                        ? "text-green-700"
+                        : "text-amber-700"
+                    }`}
+                  >
+                    {identificationResult.isHealthy
+                      ? "Plant is Healthy"
+                      : "Health Issues Detected"}
+                  </span>
+                </div>
+              )}
+
+              {/* Diseases */}
+              {identificationResult.diseases?.length > 0 && (
+                <div className="space-y-1.5">
+                  {identificationResult.diseases.slice(0, 2).map((d, i) => (
+                    <div
+                      key={i}
+                      className="bg-red-50/60 rounded-[8px] p-2 space-y-1"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <AlertTriangle size={10} className="text-red-500" />
+                        <span className="text-[11px] font-[600] text-red-700">
+                          {d.name}
+                        </span>
+                        <span className="ml-auto text-[9px] text-red-400">
+                          {Math.round(d.probability * 100)}%
+                        </span>
+                      </div>
+                      {d.description && (
+                        <p className="text-[10px] text-gray-500">
+                          {d.description.length > 80
+                            ? d.description.slice(0, 80) + "…"
+                            : d.description}
+                        </p>
+                      )}
+                      {d.treatment?.prevention?.length > 0 && (
+                        <p className="text-[9px] text-blue-600">
+                          💡 {d.treatment.prevention[0]}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -1,16 +1,39 @@
 import React, { useState, useRef, useEffect } from "react";
 import { motion } from "motion/react";
-import { Sparkles, Camera, Check, AlertTriangle, Leaf } from "lucide-react";
+import {
+  Sparkles,
+  Camera,
+  Check,
+  AlertTriangle,
+  Leaf,
+  ShieldCheck,
+  Bug,
+  Shield,
+} from "lucide-react";
 import { toast } from "sonner";
 import { formatDate } from "../data/shared";
-import { identifyPlant, isPlantNetConfigured } from "../lib/plantnet";
+import { identifyPlant, isPlantIdConfigured } from "../lib/plantid";
 
-function mapPlantNetResult(result, slotCrop) {
-  const { commonName, confidence, species, family } = result;
-  const healthScore = Math.round(60 + confidence * 40);
+/**
+ * Map Plant.id result → diagnosis string + healthScore for scan history.
+ */
+function mapPlantIdResult(result, slotCrop) {
+  const { commonName, confidence, species, family, isHealthy, diseases } =
+    result;
+
+  // Health score: if Plant.id says healthy → 85-100, otherwise scale by disease severity
+  let healthScore;
+  if (isHealthy === true) {
+    healthScore = Math.round(85 + confidence * 15);
+  } else if (isHealthy === false && diseases.length > 0) {
+    const worstProb = Math.max(...diseases.map((d) => d.probability));
+    healthScore = Math.max(20, Math.round(80 - worstProb * 60));
+  } else {
+    healthScore = Math.round(60 + confidence * 40);
+  }
 
   let diagnosis;
-  if (confidence >= 0.7) {
+  if (confidence >= 0.5) {
     const cropName = slotCrop?.name?.toLowerCase() || "";
     const identifiedName = commonName.toLowerCase();
     const speciesLower = species.toLowerCase();
@@ -19,12 +42,19 @@ function mapPlantNetResult(result, slotCrop) {
       speciesLower.includes(cropName) ||
       cropName.includes(identifiedName);
 
-    if (isMatch) {
-      diagnosis = `Identified as ${commonName} (${Math.round(confidence * 100)}% match). Healthy growth confirmed.`;
+    if (isHealthy === true) {
+      diagnosis = isMatch
+        ? `✅ Identified as ${commonName} (${Math.round(confidence * 100)}% match). Plant is healthy!`
+        : `Identified as ${commonName} (${family}). Expected ${slotCrop?.name || "unknown"}. Plant looks healthy.`;
+    } else if (diseases.length > 0) {
+      const topDisease = diseases[0];
+      diagnosis = `⚠️ ${commonName} — ${topDisease.name} detected (${Math.round(topDisease.probability * 100)}% probability).`;
     } else {
-      diagnosis = `Identified as ${commonName} (${family}). Expected ${slotCrop?.name || "unknown"}.`;
+      diagnosis = isMatch
+        ? `Identified as ${commonName} (${Math.round(confidence * 100)}% match).`
+        : `Identified as ${commonName} (${family}). Expected ${slotCrop?.name || "unknown"}.`;
     }
-  } else if (confidence >= 0.3) {
+  } else if (confidence >= 0.2) {
     diagnosis = `Possible ${commonName} (${Math.round(confidence * 100)}% confidence). Review recommended.`;
   } else {
     diagnosis = `Low confidence identification (${Math.round(confidence * 100)}%). Clearer photo recommended.`;
@@ -103,10 +133,10 @@ export default function DrAI({ slots, onUpdateSlot }) {
 
     setScanning(true);
 
-    if (isPlantNetConfigured()) {
+    if (isPlantIdConfigured()) {
       try {
         const result = await identifyPlant(file);
-        const { diagnosis, healthScore } = mapPlantNetResult(
+        const { diagnosis, healthScore } = mapPlantIdResult(
           result,
           target.crop
         );
@@ -130,10 +160,12 @@ export default function DrAI({ slots, onUpdateSlot }) {
         setScanning(false);
         toast.success(`Scan complete: ${healthScore}% health`);
       } catch (err) {
-        console.error("Pl@ntNet scan failed:", err);
+        console.error("Plant.id scan failed:", err);
         const msg = err.message || "";
-        if (msg.includes("404") || msg.includes("Species not found")) {
-          toast.error("Could not identify species. Try a clearer plant photo.");
+        if (msg.includes("404") || msg.includes("No plant")) {
+          toast.error(
+            "Could not identify species. Try a clearer plant photo."
+          );
         } else {
           toast.error("API scan failed. Using local diagnosis.");
         }
@@ -202,7 +234,7 @@ export default function DrAI({ slots, onUpdateSlot }) {
         </div>
       </div>
 
-      {/* Image Preview + Identification */}
+      {/* Image Preview + Identification + Health */}
       {imagePreview && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
@@ -219,8 +251,9 @@ export default function DrAI({ slots, onUpdateSlot }) {
               className="w-full h-40 object-cover"
             />
             {identificationResult && (
-              <div className="p-4">
-                <div className="flex items-center gap-2 mb-2">
+              <div className="p-4 space-y-3">
+                {/* Species info */}
+                <div className="flex items-center gap-2">
                   <Leaf size={14} className="text-forest" />
                   <span className="text-[13px] font-[600] text-forest">
                     {identificationResult.commonName}
@@ -232,7 +265,8 @@ export default function DrAI({ slots, onUpdateSlot }) {
                 <p className="text-[11px] text-gray-400">
                   Family: {identificationResult.family}
                 </p>
-                <div className="mt-2 flex items-center gap-2">
+                {/* Confidence bar */}
+                <div className="flex items-center gap-2">
                   <div className="flex-1 bg-gray-100 rounded-full h-1.5">
                     <div
                       className="bg-forest rounded-full h-1.5 transition-all"
@@ -245,6 +279,103 @@ export default function DrAI({ slots, onUpdateSlot }) {
                     {Math.round(identificationResult.confidence * 100)}%
                   </span>
                 </div>
+
+                {/* Health Status */}
+                {identificationResult.isHealthy !== null && (
+                  <div
+                    className={`flex items-center gap-2 p-2.5 rounded-[10px] ${
+                      identificationResult.isHealthy
+                        ? "bg-green-50"
+                        : "bg-amber-50"
+                    }`}
+                  >
+                    {identificationResult.isHealthy ? (
+                      <ShieldCheck size={16} className="text-green-600" />
+                    ) : (
+                      <AlertTriangle size={16} className="text-amber-600" />
+                    )}
+                    <span
+                      className={`text-[12px] font-[600] ${
+                        identificationResult.isHealthy
+                          ? "text-green-700"
+                          : "text-amber-700"
+                      }`}
+                    >
+                      {identificationResult.isHealthy
+                        ? "Plant is Healthy"
+                        : "Health Issues Detected"}
+                    </span>
+                    {identificationResult.healthProbability !== null && (
+                      <span className="ml-auto text-[10px] text-gray-400">
+                        {Math.round(
+                          identificationResult.healthProbability * 100
+                        )}
+                        % confidence
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Diseases */}
+                {identificationResult.diseases?.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-[11px] font-[700] text-gray-500 uppercase tracking-wider">
+                      Detected Issues
+                    </p>
+                    {identificationResult.diseases.slice(0, 3).map((d, i) => (
+                      <div
+                        key={i}
+                        className="bg-red-50/60 rounded-[10px] p-3 space-y-1.5"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Bug size={12} className="text-red-500" />
+                          <span className="text-[12px] font-[600] text-red-700">
+                            {d.name}
+                          </span>
+                          <span className="ml-auto text-[10px] text-red-400">
+                            {Math.round(d.probability * 100)}%
+                          </span>
+                        </div>
+                        {d.description && (
+                          <p className="text-[11px] text-gray-500 leading-relaxed">
+                            {d.description.length > 120
+                              ? d.description.slice(0, 120) + "…"
+                              : d.description}
+                          </p>
+                        )}
+                        {/* Treatment suggestions */}
+                        {(d.treatment.biological.length > 0 ||
+                          d.treatment.chemical.length > 0 ||
+                          d.treatment.prevention.length > 0) && (
+                          <div className="mt-1 space-y-1">
+                            {d.treatment.prevention.length > 0 && (
+                              <div className="flex items-start gap-1.5">
+                                <Shield
+                                  size={10}
+                                  className="text-blue-500 mt-0.5 shrink-0"
+                                />
+                                <p className="text-[10px] text-blue-700">
+                                  {d.treatment.prevention[0]}
+                                </p>
+                              </div>
+                            )}
+                            {d.treatment.biological.length > 0 && (
+                              <div className="flex items-start gap-1.5">
+                                <Leaf
+                                  size={10}
+                                  className="text-green-500 mt-0.5 shrink-0"
+                                />
+                                <p className="text-[10px] text-green-700">
+                                  {d.treatment.biological[0]}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -320,9 +451,9 @@ export default function DrAI({ slots, onUpdateSlot }) {
       </div>
 
       {/* Attribution */}
-      {isPlantNetConfigured() && (
+      {isPlantIdConfigured() && (
         <p className="text-center text-[10px] text-gray-300 mt-4 pb-2">
-          Powered by Pl@ntNet
+          Powered by Plant.id
         </p>
       )}
     </div>

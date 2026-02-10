@@ -9,13 +9,42 @@ import { supabase } from "../lib/supabase";
 
 const AuthContext = createContext(null);
 
+const PROFILE_STORAGE_KEY = "powerplant_profile";
+
 export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
 }
 
-// Fetch profile — standalone function, no hooks dependency
+// Read cached profile from localStorage
+function getCachedProfile(userId) {
+  try {
+    const raw = localStorage.getItem(PROFILE_STORAGE_KEY);
+    if (!raw) return null;
+    const cached = JSON.parse(raw);
+    // Only use cache if it belongs to this user
+    if (cached && cached.id === userId) return cached;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// Save profile to localStorage
+function cacheProfile(profile) {
+  try {
+    if (profile) {
+      localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
+    } else {
+      localStorage.removeItem(PROFILE_STORAGE_KEY);
+    }
+  } catch {
+    // localStorage not available — silently ignore
+  }
+}
+
+// Fetch profile from Supabase, fall back to localStorage cache
 async function fetchProfile(userId) {
   try {
     const { data, error } = await supabase
@@ -27,9 +56,17 @@ async function fetchProfile(userId) {
     if (error && error.code !== "PGRST116") {
       console.error("Error fetching profile:", error);
     }
-    return data || null;
+
+    if (data) {
+      cacheProfile(data);
+      return data;
+    }
+
+    // Supabase returned nothing — check localStorage cache
+    return getCachedProfile(userId);
   } catch {
-    return null;
+    // Network/Supabase error — fall back to cache
+    return getCachedProfile(userId);
   }
 }
 
@@ -107,6 +144,7 @@ export function AuthProvider({ children }) {
     setUser(null);
     userRef.current = null;
     setProfile(null);
+    cacheProfile(null); // clear localStorage cache
     try {
       await supabase.auth.signOut();
     } catch (err) {
@@ -127,7 +165,10 @@ export function AuthProvider({ children }) {
       avatar,
     };
 
-    // Try to save to Supabase, but always set profile locally
+    // Always cache + set locally so user can proceed
+    cacheProfile(localProfile);
+
+    // Try to save to Supabase too
     try {
       const { error } = await supabase.from("profiles").upsert({
         id: currentUser.id,
@@ -138,21 +179,22 @@ export function AuthProvider({ children }) {
 
       if (error) {
         console.warn("Supabase profile upsert failed:", error.message);
-        // Still set local profile so user can proceed
-        setProfile(localProfile);
-        return localProfile;
+      } else {
+        // Success — fetch the persisted profile to get any server-side fields
+        const p = await fetchProfile(currentUser.id);
+        if (p) {
+          cacheProfile(p);
+          setProfile(p);
+          return p;
+        }
       }
-
-      // Success — fetch the persisted profile
-      const p = await fetchProfile(currentUser.id);
-      setProfile(p || localProfile);
-      return p || localProfile;
     } catch (err) {
-      console.warn("saveProfile error, using local profile:", err.message);
-      // Always let the user through with a local profile
-      setProfile(localProfile);
-      return localProfile;
+      console.warn("saveProfile Supabase error:", err.message);
     }
+
+    // Either way, user proceeds with the local profile
+    setProfile(localProfile);
+    return localProfile;
   }
 
   const needsOnboarding = !!user && !profile;

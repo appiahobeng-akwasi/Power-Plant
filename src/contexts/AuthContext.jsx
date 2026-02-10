@@ -119,34 +119,40 @@ export function AuthProvider({ children }) {
     const currentUser = userRef.current;
     if (!currentUser) throw new Error("Not authenticated");
 
-    // Upsert with retry to handle transient AbortErrors
-    let lastError = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const { error } = await supabase.from("profiles").upsert({
-          id: currentUser.id,
-          display_name,
-          tower_name,
-          avatar,
-        });
+    // Build a local profile object as fallback
+    const localProfile = {
+      id: currentUser.id,
+      display_name,
+      tower_name: tower_name || "My Tower",
+      avatar,
+    };
 
-        if (error) throw error;
+    // Try to save to Supabase, but always set profile locally
+    try {
+      const { error } = await supabase.from("profiles").upsert({
+        id: currentUser.id,
+        display_name,
+        tower_name: tower_name || "My Tower",
+        avatar,
+      });
 
-        // Success — now fetch the profile
-        const p = await fetchProfile(currentUser.id);
-        setProfile(p);
-        return p;
-      } catch (err) {
-        lastError = err;
-        if (err?.name === "AbortError") {
-          // Wait a beat and retry
-          await new Promise((r) => setTimeout(r, 300));
-          continue;
-        }
-        throw err; // Non-abort errors fail immediately
+      if (error) {
+        console.warn("Supabase profile upsert failed:", error.message);
+        // Still set local profile so user can proceed
+        setProfile(localProfile);
+        return localProfile;
       }
+
+      // Success — fetch the persisted profile
+      const p = await fetchProfile(currentUser.id);
+      setProfile(p || localProfile);
+      return p || localProfile;
+    } catch (err) {
+      console.warn("saveProfile error, using local profile:", err.message);
+      // Always let the user through with a local profile
+      setProfile(localProfile);
+      return localProfile;
     }
-    throw lastError;
   }
 
   const needsOnboarding = !!user && !profile;

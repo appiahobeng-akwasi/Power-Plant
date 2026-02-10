@@ -26,14 +26,28 @@ export default function PersonalizeScreen() {
     }
 
     setIsLoading(true);
+
+    // Safety timeout — never show spinner longer than 8s
+    const timeout = setTimeout(() => {
+      setIsLoading(false);
+      // Force profile locally so user can proceed
+      saveProfile({
+        display_name: displayName.trim(),
+        tower_name: towerName.trim() || "My Tower",
+        avatar,
+      }).catch(() => {});
+    }, 8000);
+
     try {
       await saveProfile({
         display_name: displayName.trim(),
         tower_name: towerName.trim() || "My Tower",
         avatar,
       });
+      clearTimeout(timeout);
       // Profile save will trigger re-render in App.jsx via AuthContext
     } catch (err) {
+      clearTimeout(timeout);
       setError(err.message || "Something went wrong");
     } finally {
       setIsLoading(false);

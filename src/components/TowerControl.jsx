@@ -512,9 +512,19 @@ export default function TowerControl({
   onCapacityChange,
   immersive,
   onImmersiveChange,
+  pendingSlotId,
+  onPendingSlotHandled,
 }) {
   const [wireframe, setWireframe] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState(null);
+
+  // Deep-link: auto-open slot detail when a notification targets a specific slot
+  useEffect(() => {
+    if (pendingSlotId != null && pendingSlotId >= 0 && pendingSlotId < slots.length) {
+      setSelectedSlot(pendingSlotId);
+      onPendingSlotHandled?.();
+    }
+  }, [pendingSlotId, slots.length, onPendingSlotHandled]);
 
   const setImmersive = onImmersiveChange;
 

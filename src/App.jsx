@@ -4,6 +4,7 @@ import { Toaster } from "sonner";
 import { Leaf } from "lucide-react";
 
 import { useAuth } from "./contexts/AuthContext";
+import { NotificationProvider } from "./contexts/NotificationContext";
 import AuthShell from "./components/auth/AuthShell";
 import WelcomeScreen from "./components/auth/WelcomeScreen";
 import SignUpScreen from "./components/auth/SignUpScreen";
@@ -18,6 +19,7 @@ import TowerControl from "./components/TowerControl";
 import DrAI from "./components/DrAI";
 import Rewards from "./components/Rewards";
 import RecipeView from "./components/RecipeView";
+import NotificationCenter from "./components/NotificationCenter";
 
 import {
   generateInitialSlots,
@@ -45,6 +47,8 @@ export default function App() {
   const [showRewards, setShowRewards] = useState(false);
   const [recipeCrop, setRecipeCrop] = useState(null);
   const [towerImmersive, setTowerImmersive] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [pendingSlotId, setPendingSlotId] = useState(null);
 
   // ── Handlers ──────────────────────────────────────────────────
 
@@ -95,6 +99,13 @@ export default function App() {
     }));
   }, []);
 
+  const executeNotificationAction = useCallback((action) => {
+    setShowNotifications(false);
+    if (action.tab) setActiveTab(action.tab);
+    if (action.slotId !== undefined) setPendingSlotId(action.slotId);
+    if (action.openRewards) setShowRewards(true);
+  }, []);
+
   // ── Render ────────────────────────────────────────────────────
 
   const renderContent = () => {
@@ -122,6 +133,8 @@ export default function App() {
             onCapacityChange={setPlantCapacity}
             immersive={towerImmersive}
             onImmersiveChange={setTowerImmersive}
+            pendingSlotId={pendingSlotId}
+            onPendingSlotHandled={() => setPendingSlotId(null)}
           />
         );
       case "ai":
@@ -179,14 +192,22 @@ export default function App() {
 
   // ── Main App ────────────────────────────────────────────────────
   return (
-    <>
+    <NotificationProvider
+      slots={slots}
+      rewardStats={rewardStats}
+      labData={labData}
+      onAction={executeNotificationAction}
+    >
       {/* Phone Frame — hidden when tower immersive is open */}
       <div
         className="min-h-screen bg-gray-200/60 flex items-center justify-center"
         style={{ display: towerImmersive ? "none" : undefined }}
       >
         <div className="w-full max-w-[430px] h-screen max-h-[932px] bg-background rounded-none sm:rounded-[2rem] shadow-2xl flex flex-col overflow-hidden relative">
-          <TopBar onAvatarClick={() => setShowRewards(true)} />
+          <TopBar
+            onAvatarClick={() => setShowRewards(true)}
+            onBellClick={() => setShowNotifications(true)}
+          />
 
           <main className="flex-1 overflow-y-auto">{renderContent()}</main>
 
@@ -195,6 +216,15 @@ export default function App() {
       </div>
 
       {/* Overlays (rendered outside the phone frame) */}
+      <AnimatePresence>
+        {showNotifications && (
+          <NotificationCenter
+            key="notifications"
+            onClose={() => setShowNotifications(false)}
+          />
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
         {showRewards && (
           <Rewards
@@ -226,6 +256,6 @@ export default function App() {
           },
         }}
       />
-    </>
+    </NotificationProvider>
   );
 }

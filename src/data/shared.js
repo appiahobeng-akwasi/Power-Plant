@@ -241,3 +241,13 @@ export function getDaysUntilHarvest(plantedDate, growDays) {
 export function getDaysSincePlanting(plantedDate) {
   return Math.floor((new Date() - new Date(plantedDate)) / 86400000);
 }
+
+export function getLastScanDate(slot) {
+  if (!slot.scanHistory || slot.scanHistory.length === 0) return null;
+  return slot.scanHistory[slot.scanHistory.length - 1].date;
+}
+
+export function daysSinceDate(dateStr) {
+  if (!dateStr) return Infinity;
+  return Math.floor((new Date() - new Date(dateStr)) / 86400000);
+}

@@ -1,4 +1,5 @@
 // Vercel serverless function — proxies Plant.id API to avoid CORS
+import { createClient } from "@supabase/supabase-js";
 
 export const config = {
   api: {
@@ -13,17 +14,40 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const apiKey = process.env.VITE_PLANTID_API_KEY;
+  // ── Auth: verify Supabase JWT ──
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Missing authorization token" });
+  }
+
+  const token = authHeader.replace("Bearer ", "");
+  const supabase = createClient(
+    process.env.VITE_SUPABASE_URL,
+    process.env.VITE_SUPABASE_ANON_KEY
+  );
+  const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+  if (authError || !user) {
+    return res.status(401).json({ error: "Invalid or expired token" });
+  }
+
+  // ── Validate request body ──
+  const body = req.body;
+  if (!body || !body.images || !Array.isArray(body.images) || body.images.length === 0) {
+    return res.status(400).json({ error: "Request must include a non-empty images array" });
+  }
+  if (body.images.length > 5) {
+    return res.status(400).json({ error: "Maximum 5 images allowed per request" });
+  }
+
+  const apiKey = process.env.PLANTID_API_KEY;
   if (!apiKey) {
-    console.error("VITE_PLANTID_API_KEY is not set");
+    console.error("PLANTID_API_KEY is not set");
     return res.status(500).json({ error: "Plant.id API key not configured" });
   }
 
   try {
-    // req.body is already parsed JSON by Vercel's bodyParser
-    const bodyStr = typeof req.body === "string" ? req.body : JSON.stringify(req.body);
+    const bodyStr = typeof body === "string" ? body : JSON.stringify(body);
 
-    // Plant.id v3 — identification with health assessment
     const url = "https://plant.id/api/v3/identification?details=common_names,description,taxonomy,treatment&language=en";
 
     const response = await fetch(url, {
@@ -43,6 +67,6 @@ export default async function handler(req, res) {
       .send(data);
   } catch (err) {
     console.error("Plant.id proxy error:", err);
-    res.status(500).json({ error: "Proxy request failed", details: err.message });
+    res.status(500).json({ error: "Proxy request failed" });
   }
 }

@@ -2,12 +2,19 @@
  * Plant.id v3 API integration — species identification + health assessment
  * Replaces Pl@ntNet with a more accurate crop identification engine.
  *
- * Docs: https://plant.id/docs
+ * In dev mode, uses Vite proxy with API key sent directly.
+ * In production, proxies through Vercel serverless functions with Supabase JWT auth.
  */
 
+import { supabase } from "./supabase";
+
+// Only used in dev mode (Vite proxy)
 const PLANTID_API_KEY = import.meta.env.VITE_PLANTID_API_KEY;
 
 export function isPlantIdConfigured() {
+  // In prod, always configured (serverless function has the key)
+  // In dev, needs the VITE_ env var
+  if (!import.meta.env.DEV) return true;
   return Boolean(PLANTID_API_KEY);
 }
 
@@ -28,6 +35,14 @@ function fileToBase64(file) {
 }
 
 /**
+ * Get the current Supabase session token for authenticating with serverless functions.
+ */
+async function getAuthToken() {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token || null;
+}
+
+/**
  * Identify a plant species AND assess its health in one call.
  * Returns a rich result object with species info, health status, and diseases.
  */
@@ -42,18 +57,19 @@ export async function identifyPlant(imageFile) {
   });
 
   let url;
-  if (import.meta.env.DEV) {
-    // Dev: use Vite proxy to avoid CORS
-    url = `/plantid-api/v3/identification?details=common_names,description,taxonomy,treatment&language=en`;
-  } else {
-    // Prod: use Vercel serverless function
-    url = "/api/identify";
-  }
-
   const headers = { "Content-Type": "application/json" };
-  // In dev mode, send the API key directly (proxy forwards to Plant.id)
+
   if (import.meta.env.DEV) {
+    // Dev: use Vite proxy to avoid CORS, send API key directly
+    url = `/plantid-api/v3/identification?details=common_names,description,taxonomy,treatment&language=en`;
     headers["Api-Key"] = PLANTID_API_KEY;
+  } else {
+    // Prod: use Vercel serverless function with JWT auth
+    url = "/api/identify";
+    const token = await getAuthToken();
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
   }
 
   const response = await fetch(url, {

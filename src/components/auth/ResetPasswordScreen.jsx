@@ -1,44 +1,32 @@
 import React, { useState } from "react";
 import { motion } from "motion/react";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
-import SocialAuthButtons from "./SocialAuthButtons";
 
-export default function SignUpScreen({ onNavigate }) {
-  const { signUp } = useAuth();
-  const [email, setEmail] = useState("");
+export default function ResetPasswordScreen() {
+  const { updatePassword } = useAuth();
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  const validate = () => {
-    if (!email.includes("@") || !email.includes(".")) {
-      return "Please enter a valid email address";
-    }
-    if (password.length < 6) {
-      return "Password must be at least 6 characters";
-    }
-    if (password !== confirmPassword) {
-      return "Passwords don't match";
-    }
-    return null;
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
 
-    const validationError = validate();
-    if (validationError) {
-      setError(validationError);
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters");
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError("Passwords don't match");
       return;
     }
 
     setIsLoading(true);
     try {
-      await signUp(email, password);
-      // Auth state change listener will handle navigation
+      await updatePassword(password);
+      // AuthContext clears passwordRecovery → App re-renders into main app
     } catch (err) {
       setError(err.message || "Something went wrong");
     } finally {
@@ -48,57 +36,21 @@ export default function SignUpScreen({ onNavigate }) {
 
   return (
     <motion.div
-      initial={{ opacity: 0, x: 30 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.35 }}
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
       className="w-full max-w-[340px]"
     >
-      {/* Back button */}
-      <button
-        onClick={() => onNavigate("welcome")}
-        className="flex items-center gap-1.5 text-white/70 mb-6 active:scale-95 transition-transform"
-      >
-        <ArrowLeft size={18} />
-        <span className="text-[13px] font-[500]">Back</span>
-      </button>
-
-      {/* Card */}
       <div className="bg-white rounded-[24px] p-6 shadow-xl">
-        <h2 className="text-[20px] font-[700] text-forest mb-1">Create Account</h2>
+        <h2 className="text-[20px] font-[700] text-forest mb-1">New Password</h2>
         <p className="text-[13px] text-gray-400 mb-5">
-          Start your growing journey
+          Choose a strong password for your account.
         </p>
-
-        {/* Social auth */}
-        <SocialAuthButtons onError={setError} />
-
-        {/* Divider */}
-        <div className="flex items-center gap-3 my-5">
-          <div className="flex-1 h-px bg-gray-100" />
-          <span className="text-[11px] text-gray-400 font-[500] uppercase tracking-wider">
-            or continue with email
-          </span>
-          <div className="flex-1 h-px bg-gray-100" />
-        </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="text-[11px] font-[600] text-gray-500 uppercase tracking-wider block mb-1.5">
-              Email
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              className="w-full px-4 py-3 rounded-[12px] bg-gray-50 border border-gray-100 text-[14px] text-gray-800 placeholder:text-gray-300 focus:outline-none focus:border-forest/30 focus:ring-2 focus:ring-forest/10 transition-all"
-              autoComplete="email"
-            />
-          </div>
-
-          <div>
-            <label className="text-[11px] font-[600] text-gray-500 uppercase tracking-wider block mb-1.5">
-              Password
+              New Password
             </label>
             <input
               type="password"
@@ -142,23 +94,13 @@ export default function SignUpScreen({ onNavigate }) {
             {isLoading ? (
               <>
                 <Loader2 size={16} className="animate-spin" />
-                Creating...
+                Saving...
               </>
             ) : (
-              "Create Account"
+              "Save New Password"
             )}
           </button>
         </form>
-
-        <p className="text-center text-[12px] text-gray-400 mt-4">
-          Already have an account?{" "}
-          <button
-            onClick={() => onNavigate("login")}
-            className="text-forest font-[600]"
-          >
-            Sign In
-          </button>
-        </p>
       </div>
     </motion.div>
   );

@@ -110,6 +110,19 @@ export default function WaterLab({ labData, onLogData }) {
         </button>
       </div>
 
+      {/* Empty state prompt */}
+      {labData.ph.length === 0 && (
+        <div className="mx-5 mb-4 rounded-[16px] bg-blue-50 border border-blue-100 p-4 flex items-center gap-3">
+          <span className="text-[28px]">💧</span>
+          <div>
+            <p className="text-[13px] font-[600] text-blue-700">No readings yet</p>
+            <p className="text-[12px] text-blue-500 mt-0.5">
+              Log your first pH, EC &amp; temp to unlock charts
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Charts */}
       <div className="px-5">
         <MiniChart label="pH Level" data={labData.ph} color="#2C5530" unit="" />

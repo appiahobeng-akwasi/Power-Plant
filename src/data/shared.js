@@ -81,7 +81,8 @@ export function deriveXp(slots, stats) {
     scans * 25 +
     stats.waterLogs * 10 +
     stats.nutrientLogs * 15 +
-    stats.labLogs * 20
+    stats.labLogs * 20 +
+    (stats.bonusXp || 0)
   );
 }
 
@@ -145,6 +146,28 @@ export function derivePersonalRecords(slots, stats) {
 }
 
 // ── Generator Functions ───────────────────────────────────────────
+
+export function generateEmptySlots(count = 40) {
+  return Array.from({ length: count }, (_, i) => ({
+    id: i,
+    crop: null,
+    plantedDate: null,
+    health: 0,
+    scanHistory: [],
+  }));
+}
+
+export function generateEmptyRewardStats() {
+  return {
+    waterLogs: 0,
+    nutrientLogs: 0,
+    labLogs: 0,
+    streak: 0,
+    longestStreak: 0,
+    weeklyActivities: 0,
+    bonusXp: 0,
+  };
+}
 
 export function generateInitialSlots(count = 40) {
   const initialCrops = CROP_OPTIONS.slice(0, 8); // First 8 crops

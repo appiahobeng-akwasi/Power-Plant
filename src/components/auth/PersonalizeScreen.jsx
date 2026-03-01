@@ -9,8 +9,13 @@ const AVATAR_OPTIONS = [
 ];
 
 export default function PersonalizeScreen() {
-  const { saveProfile } = useAuth();
-  const [displayName, setDisplayName] = useState("");
+  const { saveProfile, user } = useAuth();
+  // Pre-fill name from OAuth metadata (Google/Apple/Facebook provide this)
+  const oauthName =
+    user?.user_metadata?.full_name ||
+    user?.user_metadata?.name ||
+    "";
+  const [displayName, setDisplayName] = useState(oauthName);
   const [towerName, setTowerName] = useState("");
   const [avatar, setAvatar] = useState("🌱");
   const [error, setError] = useState("");

@@ -74,6 +74,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
   const userRef = useRef(null);
   const initDone = useRef(false);
 
@@ -103,7 +104,11 @@ export function AuthProvider({ children }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user) {
+      if (event === "PASSWORD_RECOVERY") {
+        setPasswordRecovery(true);
+        setUser(session.user);
+        userRef.current = session.user;
+      } else if (session?.user) {
         setUser(session.user);
         userRef.current = session.user;
         if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
@@ -114,6 +119,7 @@ export function AuthProvider({ children }) {
         setUser(null);
         userRef.current = null;
         setProfile(null);
+        setPasswordRecovery(false);
       }
     });
 
@@ -134,6 +140,38 @@ export function AuthProvider({ children }) {
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
+    });
+    if (error) throw error;
+    return data;
+  }
+
+  // Send password reset email
+  async function resetPassword(email) {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin,
+    });
+    if (error) throw error;
+  }
+
+  // Set a new password after recovery (called from ResetPasswordScreen)
+  async function updatePassword(newPassword) {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw error;
+    setPasswordRecovery(false);
+    // Fetch profile so the app proceeds to the main screen
+    if (userRef.current) {
+      const p = await fetchProfile(userRef.current.id);
+      setProfile(p);
+    }
+  }
+
+  // Sign in with OAuth provider (google, apple, facebook)
+  async function signInWithOAuth(provider) {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: {
+        redirectTo: window.location.origin,
+      },
     });
     if (error) throw error;
     return data;
@@ -197,7 +235,7 @@ export function AuthProvider({ children }) {
     return localProfile;
   }
 
-  const needsOnboarding = !!user && !profile;
+  const needsOnboarding = !!user && !profile && !passwordRecovery;
 
   return (
     <AuthContext.Provider
@@ -206,8 +244,12 @@ export function AuthProvider({ children }) {
         profile,
         loading,
         needsOnboarding,
+        passwordRecovery,
         signUp,
         signIn,
+        signInWithOAuth,
+        resetPassword,
+        updatePassword,
         signOut,
         saveProfile,
       }}

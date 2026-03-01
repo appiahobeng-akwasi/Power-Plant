@@ -1,6 +1,6 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Toaster } from "sonner";
+import { Toaster, toast } from "sonner";
 import { Leaf } from "lucide-react";
 
 import { useAuth } from "./contexts/AuthContext";
@@ -10,6 +10,9 @@ import WelcomeScreen from "./components/auth/WelcomeScreen";
 import SignUpScreen from "./components/auth/SignUpScreen";
 import LoginScreen from "./components/auth/LoginScreen";
 import PersonalizeScreen from "./components/auth/PersonalizeScreen";
+import ForgotPasswordScreen from "./components/auth/ForgotPasswordScreen";
+import ResetPasswordScreen from "./components/auth/ResetPasswordScreen";
+import OnboardingFlow from "./components/auth/OnboardingFlow";
 
 import TopBar from "./components/TopBar";
 import BottomNav from "./components/BottomNav";
@@ -20,20 +23,48 @@ import DrAI from "./components/DrAI";
 import Rewards from "./components/Rewards";
 import RecipeView from "./components/RecipeView";
 import NotificationCenter from "./components/NotificationCenter";
+import WelcomeConfetti from "./components/WelcomeConfetti";
 
 import {
-  generateInitialSlots,
-  generateInitialLabData,
-  generateInitialRewardStats,
+  generateEmptySlots,
+  generateEmptyRewardStats,
 } from "./data/shared";
 
 // ── Initial State ─────────────────────────────────────────────────
-const initialSlots = generateInitialSlots(40);
-const initialLabData = generateInitialLabData();
-const initialRewardStats = generateInitialRewardStats();
+const initialSlots = generateEmptySlots(40);
+const initialLabData = { ph: [], ec: [], temp: [] };
+const initialRewardStats = generateEmptyRewardStats();
 
 export default function App() {
-  const { user, profile, loading, needsOnboarding } = useAuth();
+  const { user, profile, loading, needsOnboarding, passwordRecovery } = useAuth();
+
+  // ── Feature onboarding (shown once per user after first sign-up) ─
+  // Use a per-user key so new accounts always see onboarding,
+  // regardless of what was stored from previous sessions.
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [pendingWelcome, setPendingWelcome] = useState(false);
+
+  useEffect(() => {
+    if (!user || !profile) return;
+    const key = `pp_onboarding_${user.id}`;
+    if (!localStorage.getItem(key)) {
+      setShowOnboarding(true);
+    }
+  }, [user?.id, profile]);
+
+  // Fire heartfelt welcome toast once the main app is mounted
+  useEffect(() => {
+    if (!pendingWelcome || !profile) return;
+    setPendingWelcome(false);
+    const name = profile.display_name || "Grower";
+    setTimeout(() => {
+      toast(`Hey ${name}, welcome to Power Plant! 🌱`, {
+        description:
+          "Your tower is set up and ready. We're so glad you're here — let's grow something amazing together 🌿",
+        duration: 4000,
+      });
+    }, 600);
+  }, [pendingWelcome, profile]);
 
   // ── Auth Screen State ───────────────────────────────────────────
   const [authScreen, setAuthScreen] = useState("welcome");
@@ -49,6 +80,39 @@ export default function App() {
   const [towerImmersive, setTowerImmersive] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [pendingSlotId, setPendingSlotId] = useState(null);
+  const [showConfetti, setShowConfetti] = useState(false);
+
+  // ── Setup Checklist Progress (per-user, persisted) ────────────
+  const [setupProgress, setSetupProgress] = useState(null);
+
+  useEffect(() => {
+    if (!user || !profile) return;
+    const key = `pp_setup_${user.id}`;
+    const saved = localStorage.getItem(key);
+    const initial = saved
+      ? JSON.parse(saved)
+      : { towerNamed: !!profile.tower_name, waterLogged: false, plantAdded: false, plantScanned: false };
+    setSetupProgress(initial);
+  }, [user?.id, profile]);
+
+  const completeSetupStep = useCallback((stepId, xp) => {
+    if (!user) return;
+    setSetupProgress((prev) => {
+      if (!prev || prev[stepId]) return prev; // already done
+      const next = { ...prev, [stepId]: true };
+      localStorage.setItem(`pp_setup_${user.id}`, JSON.stringify(next));
+      return next;
+    });
+    if (xp) {
+      setRewardStats((prev) => ({ ...prev, bonusXp: (prev.bonusXp || 0) + xp }));
+    }
+  }, [user]);
+
+  const handleSetupXpEarned = useCallback((bonusXp) => {
+    setRewardStats((prev) => ({ ...prev, bonusXp: (prev.bonusXp || 0) + bonusXp }));
+    setShowConfetti(true);
+    setTimeout(() => setShowConfetti(false), 4000);
+  }, []);
 
   // ── Handlers ──────────────────────────────────────────────────
 
@@ -68,13 +132,18 @@ export default function App() {
         };
       })
     );
-  }, []);
+    if (crop !== null) completeSetupStep("plantAdded", 75);
+  }, [completeSetupStep]);
 
   const updateSlot = useCallback((index, partial) => {
     setSlots((prev) =>
       prev.map((slot, i) => (i === index ? { ...slot, ...partial } : slot))
     );
-  }, []);
+    // Detect a new scan being added
+    if (partial.scanHistory) {
+      completeSetupStep("plantScanned", 100);
+    }
+  }, [completeSetupStep]);
 
   const logLabData = useCallback((ph, ec, temp) => {
     const date = new Date().toISOString().split("T")[0];
@@ -88,7 +157,8 @@ export default function App() {
       labLogs: prev.labLogs + 1,
       weeklyActivities: prev.weeklyActivities + 1,
     }));
-  }, []);
+    completeSetupStep("waterLogged", 50);
+  }, [completeSetupStep]);
 
   const handleActivity = useCallback((type) => {
     setRewardStats((prev) => ({
@@ -119,6 +189,9 @@ export default function App() {
             onActivity={handleActivity}
             onOpenRewards={() => setShowRewards(true)}
             onOpenRecipes={(crop) => setRecipeCrop(crop)}
+            setupProgress={setupProgress}
+            onNavigateTab={setActiveTab}
+            onSetupXpEarned={handleSetupXpEarned}
           />
         );
       case "lab":
@@ -176,17 +249,43 @@ export default function App() {
           {authScreen === "login" && (
             <LoginScreen key="login" onNavigate={setAuthScreen} />
           )}
+          {authScreen === "forgot-password" && (
+            <ForgotPasswordScreen key="forgot-password" onNavigate={setAuthScreen} />
+          )}
         </AnimatePresence>
       </AuthShell>
     );
   }
 
-  // ── Onboarding (user exists but no profile) ────────────────────
+  // ── Password Recovery (user clicked reset link in email) ────────
+  if (passwordRecovery) {
+    return (
+      <AuthShell>
+        <ResetPasswordScreen />
+      </AuthShell>
+    );
+  }
+
+  // ── Personalize (user exists but no profile yet) ───────────────
   if (needsOnboarding) {
     return (
       <AuthShell>
         <PersonalizeScreen />
       </AuthShell>
+    );
+  }
+
+  // ── Feature onboarding (first time after sign-up + personalize) ─
+  if (showOnboarding) {
+    return (
+      <OnboardingFlow
+        onComplete={(data) => {
+          localStorage.setItem(`pp_onboarding_${user.id}`, "1");
+          if (data?.capacity) setPlantCapacity(data.capacity);
+          setShowOnboarding(false);
+          setPendingWelcome(true);
+        }}
+      />
     );
   }
 
@@ -245,6 +344,9 @@ export default function App() {
           />
         )}
       </AnimatePresence>
+
+      {/* Welcome confetti (fires when setup completes) */}
+      {showConfetti && <WelcomeConfetti />}
 
       {/* Toaster */}
       <Toaster

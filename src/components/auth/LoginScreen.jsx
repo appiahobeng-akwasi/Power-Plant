@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { motion } from "motion/react";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
+import SocialAuthButtons from "./SocialAuthButtons";
 
 export default function LoginScreen({ onNavigate }) {
   const { signIn } = useAuth();
@@ -53,6 +54,18 @@ export default function LoginScreen({ onNavigate }) {
           Sign in to your tower
         </p>
 
+        {/* Social auth */}
+        <SocialAuthButtons onError={setError} />
+
+        {/* Divider */}
+        <div className="flex items-center gap-3 my-5">
+          <div className="flex-1 h-px bg-gray-100" />
+          <span className="text-[11px] text-gray-400 font-[500] uppercase tracking-wider">
+            or continue with email
+          </span>
+          <div className="flex-1 h-px bg-gray-100" />
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="text-[11px] font-[600] text-gray-500 uppercase tracking-wider block mb-1.5">
@@ -69,9 +82,18 @@ export default function LoginScreen({ onNavigate }) {
           </div>
 
           <div>
-            <label className="text-[11px] font-[600] text-gray-500 uppercase tracking-wider block mb-1.5">
-              Password
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-[11px] font-[600] text-gray-500 uppercase tracking-wider">
+                Password
+              </label>
+              <button
+                type="button"
+                onClick={() => onNavigate("forgot-password")}
+                className="text-[11px] font-[600] text-forest"
+              >
+                Forgot password?
+              </button>
+            </div>
             <input
               type="password"
               value={password}

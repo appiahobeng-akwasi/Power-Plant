@@ -25,6 +25,7 @@ import {
   DrawerFooter,
 } from "./ui/drawer";
 import { useAuth } from "../contexts/AuthContext";
+import SetupChecklist from "./SetupChecklist";
 
 export default function Dashboard({
   slots,
@@ -33,6 +34,9 @@ export default function Dashboard({
   onActivity,
   onOpenRewards,
   onOpenRecipes,
+  setupProgress,
+  onNavigateTab,
+  onSetupXpEarned,
 }) {
   const { profile } = useAuth();
   const [cropDrawerOpen, setCropDrawerOpen] = useState(false);
@@ -65,12 +69,21 @@ export default function Dashboard({
     setCropDrawerOpen(true);
   };
 
+  const hasPlants = slots.some((s) => s.crop !== null);
+
   return (
     <div className="pb-4">
       {/* Greeting */}
       <h1 className="text-[24px] font-[300] text-forest px-5 pt-2 pb-4">
         {getGreeting()}, {profile?.display_name || "Grower"}.
       </h1>
+
+      {/* Setup checklist — shown until all steps complete */}
+      <SetupChecklist
+        progress={setupProgress}
+        onNavigate={onNavigateTab}
+        onXpEarned={onSetupXpEarned}
+      />
 
       {/* Hero Card */}
       <div
@@ -156,34 +169,50 @@ export default function Dashboard({
         <h3 className="text-[12px] font-[700] text-gray-400 uppercase tracking-[1.2px] px-5 mb-3">
           Active Crops
         </h3>
-        <div className="flex gap-4 px-5 overflow-x-auto scrollbar-hide pb-2">
-          {plantedSlots.map((slot) => (
+        {hasPlants ? (
+          <div className="flex gap-4 px-5 overflow-x-auto scrollbar-hide pb-2">
+            {plantedSlots.map((slot) => (
+              <button
+                key={slot.id}
+                onClick={() => slot.crop && onOpenRecipes(slot.crop)}
+                className="flex flex-col items-center gap-1.5 flex-shrink-0 active:scale-[0.98] transition-transform"
+              >
+                <div
+                  className="w-[65px] h-[65px] rounded-full bg-white flex items-center justify-center text-[28px]"
+                  style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}
+                >
+                  {slot.crop?.icon}
+                </div>
+                <span className="text-[12px] font-[500] text-gray-600">
+                  {slot.crop?.name}
+                </span>
+              </button>
+            ))}
             <button
-              key={slot.id}
-              onClick={() => slot.crop && onOpenRecipes(slot.crop)}
+              onClick={handleAddCrop}
               className="flex flex-col items-center gap-1.5 flex-shrink-0 active:scale-[0.98] transition-transform"
             >
-              <div
-                className="w-[65px] h-[65px] rounded-full bg-white flex items-center justify-center text-[28px]"
-                style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}
-              >
-                {slot.crop?.icon}
+              <div className="w-[65px] h-[65px] rounded-full bg-white flex items-center justify-center border-2 border-dashed border-gray-300">
+                <Plus size={22} className="text-gray-400" />
               </div>
-              <span className="text-[12px] font-[500] text-gray-600">
-                {slot.crop?.name}
-              </span>
+              <span className="text-[12px] font-[500] text-gray-400">Add</span>
             </button>
-          ))}
+          </div>
+        ) : (
           <button
             onClick={handleAddCrop}
-            className="flex flex-col items-center gap-1.5 flex-shrink-0 active:scale-[0.98] transition-transform"
+            className="mx-5 w-[calc(100%-40px)] flex items-center gap-4 p-4 rounded-[16px] bg-white border-2 border-dashed border-gray-200 active:scale-[0.98] transition-transform"
           >
-            <div className="w-[65px] h-[65px] rounded-full bg-white flex items-center justify-center border-2 border-dashed border-gray-300">
-              <Plus size={22} className="text-gray-400" />
+            <div className="w-12 h-12 rounded-full bg-forest/8 flex items-center justify-center text-[24px] flex-shrink-0">
+              🌱
             </div>
-            <span className="text-[12px] font-[500] text-gray-400">Add</span>
+            <div className="text-left">
+              <p className="text-[14px] font-[600] text-gray-700">Plant your first crop</p>
+              <p className="text-[12px] text-gray-400 mt-0.5">Tap to choose from 40+ crops</p>
+            </div>
+            <ChevronRight size={16} className="text-gray-300 ml-auto flex-shrink-0" />
           </button>
-        </div>
+        )}
       </div>
 
       {/* Quick Log */}

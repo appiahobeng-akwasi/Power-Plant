@@ -112,8 +112,12 @@ export function AuthProvider({ children }) {
         setUser(session.user);
         userRef.current = session.user;
         if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+          // Immediately restore cached profile so needsOnboarding never flickers true
+          const cached = getCachedProfile(session.user.id);
+          if (cached) setProfile(cached);
+          // Then refresh from Supabase in the background
           const p = await fetchProfile(session.user.id);
-          setProfile(p);
+          if (p) setProfile(p);
         }
       } else {
         setUser(null);
